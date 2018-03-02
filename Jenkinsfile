@@ -1,4 +1,4 @@
-/**
+
 properties([
   parameters([
     string(defaultValue: '1.0', description: 'Current version number', name: 'VERSION'),
@@ -10,7 +10,7 @@ properties([
     string(defaultValue: 'linux-build', description: 'GitHub repository', name: 'GITHUB_REPO'),
   ])
 ])
-*/
+
 
 node('docker && linux-build') {
   timestamps {
