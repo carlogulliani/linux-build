@@ -113,7 +113,7 @@ node('docker && linux-build') {
                     # use -ve, otherwise we could leak GITHUB_TOKEN...
                     set -ve
                     echo "machine github.com login user password $GITHUB_TOKEN" > ~/.netrc
-                    repo forall -g tagged -e -c git push ayufan "$GITHUB_USER/$GITHUB_REPO/$VERSION" -f
+                    repo forall -g tagged -e -c git push ilyamordasov "$GITHUB_USER/$GITHUB_REPO/$VERSION" -f
                     rm ~/.netrc
                   '''
                 }
