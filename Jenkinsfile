@@ -46,6 +46,13 @@ node('docker && linux-build') {
                   repo sync -j 20 -c --force-sync
                 '''
               }
+            
+            stage('Apply patches') {
+              sh '''#!/bin/bash
+                  set -xe
+                  git pull
+              '''
+            }
 
               stage('U-boot') {
                 sh '''#!/bin/bash
