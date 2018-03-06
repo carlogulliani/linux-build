@@ -50,7 +50,7 @@ node('docker && linux-build') {
             stage('Apply patches') {
               sh '''#!/bin/bash
                   set -xe
-                  git pull
+                  git pull origin master
               '''
             }
 
