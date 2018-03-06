@@ -47,12 +47,12 @@ node('docker && linux-build') {
                 '''
               }
             
-            stage('Apply patches') {
+            /*stage('Apply patches') {
               sh '''#!/bin/bash
                   set -xe
                   git pull origin master
               '''
-            }
+            }*/
 
               stage('U-boot') {
                 sh '''#!/bin/bash
