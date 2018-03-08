@@ -189,10 +189,10 @@ def notifyBuild(String buildStatus = 'STARTED') {
   // Default values
   def colorName = 'RED'
   def colorCode = '#FF0000'
-  def subject = "${buildStatus}: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+  def buildUrl = (${env.BUILD_URL}).replace("localhost", "jenkins.gotdns.ch")
+  def subject = "${buildStatus}: ${env.JOB_NAME} » #${env.BUILD_NUMBER} (<a href=\"${env.BUILD_URL}\">Open</a>)"
   def summary = "${subject} (${env.BUILD_URL})"
-  def details = """<p>STARTED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]':</p>
-    <p>Check console output at "<a href="${env.BUILD_URL}">${env.JOB_NAME} [${env.BUILD_NUMBER}]</a>"</p>"""
+  def details = """<p>${env.JOB_NAME} » #${env.BUILD_NUMBER} (<a href=\"${env.BUILD_URL}\">Open</a>)</p>"""
  
   // Override default values based on build status
   if (buildStatus == 'STARTED') {
@@ -200,7 +200,7 @@ def notifyBuild(String buildStatus = 'STARTED') {
     colorCode = '#FFFF00'
   } else if (buildStatus == 'SUCCESSFUL') {
     color = 'GREEN'
-    colorCode = '#00FF00'
+    colorCode = '#36a64f'
   } else {
     color = 'RED'
     colorCode = '#FF0000'
