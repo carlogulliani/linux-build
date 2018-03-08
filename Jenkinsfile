@@ -208,12 +208,4 @@ def notifyBuild(String buildStatus = 'STARTED') {
  
   // Send notifications
   slackSend (color: colorCode, message: summary)
- 
-  hipchatSend (color: color, notify: true, message: summary)
- 
-  emailext (
-      subject: subject,
-      body: details,
-      recipientProviders: [[$class: 'DevelopersRecipientProvider']]
-    )
 }
