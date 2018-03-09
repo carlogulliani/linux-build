@@ -57,7 +57,8 @@ node('docker && linux-build') {
                     if (params.PATCH) {
                       sh '''#!/bin/bash
                           set -xe
-                          git apply --check patches/spidev.patch
+                          wget -O kernel/arch/arm64/boot/dts/rockchip/rk3328.dtsi https://raw.githubusercontent.com/ilyamordasov/linux-build/master/kernel/arch/arm64/boot/dts/rockchip/rk3328.dtsi
+                          wget -O kernel/arch/arm64/boot/dts/rockchip/rk3328-rock64.dts https://raw.githubusercontent.com/ilyamordasov/linux-build/master/kernel/arch/arm64/boot/dts/rockchip/rk3328-rock64.dts
                       '''
                     }
                  }
