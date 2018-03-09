@@ -174,7 +174,7 @@ node('docker && linux-build') {
     }
   } catch (e) {
     // If there was an exception thrown, the build failed
-    currentBuild.result = "FAILED"
+    currentBuild.result = "Failed after "
     throw e
   } finally {
     // Success or failure, always send notifications
@@ -184,14 +184,14 @@ node('docker && linux-build') {
 
 def notifyBuild(String buildStatus = 'STARTED') {
   // build status of null means successful
-  buildStatus =  buildStatus ?: 'SUCCESSFUL'
+  buildStatus =  buildStatus ?: 'Success after '
  
   // Default values
   def colorName = 'RED'
   def colorCode = '#FF0000'
   // def buildUrl = ${env.BUILD_URL}
   // buildUrl = buildUrl.replace("localhost", "jenkins.gotdns.ch")
-  def subject = "${env.JOB_NAME} » #${env.BUILD_NUMBER}"
+  def subject = "${env.JOB_NAME} - #${env.BUILD_NUMBER} ${buildStatus}"
   def summary = "${subject} (${env.BUILD_URL})"
   def details = """<p>${env.JOB_NAME} » #${env.BUILD_NUMBER} (<a href='${env.BUILD_URL}'>Open</a>)</p>"""
  
