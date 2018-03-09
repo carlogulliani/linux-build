@@ -29,7 +29,7 @@ node('docker && linux-build') {
               "RELEASE=$BUILD_NUMBER"
             ]) {
                 stage('Prepare') {
-                  notifyBuild("STARTED")
+                  // notifyBuild("STARTED")
                   sh '''#!/bin/bash
                     set -xe
                     export CCACHE_DIR=$WORKSPACE/ccache
