@@ -199,11 +199,11 @@ def notifyBuild(String buildStatus = 'STARTED') {
   // Default values
   def colorName = 'RED'
   def colorCode = '#FF0000'
+  def buildUrl = "http://jenkins.gotdns.ch"
   // def buildUrl = ${env.BUILD_URL}
   // buildUrl = buildUrl.replace("localhost", "jenkins.gotdns.ch")
   def subject = "${env.JOB_NAME} - #${env.BUILD_NUMBER} ${buildStatus}"
-  def summary = "${subject} (${env.BUILD_URL})"
-  def details = """<p>${env.JOB_NAME} » #${env.BUILD_NUMBER} (<a href='${env.BUILD_URL}'>Open</a>)</p>"""
+  def summary = "${subject} (<${env.BUILD_URL}|Open>)"
  
   // Override default values based on build status
   if (buildStatus == 'STARTED') {
@@ -218,5 +218,5 @@ def notifyBuild(String buildStatus = 'STARTED') {
   }
  
   // Send notifications
-  slackSend (color: colorCode, message: summary)
+  slackSend (color: colorCode, message: summary, baseUrl: buildUrl)
 }
