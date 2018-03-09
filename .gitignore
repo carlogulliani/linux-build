@@ -1,7 +1,4 @@
 /build
-/kernel
-!kernel/**/*.dts
-!kernel/**/*.dtsi
 /kernel-mainline
 /out
 /rkbin
@@ -14,3 +11,4 @@
 *.changes
 /arm-trusted-firmware
 /tmp
+.DS_Store
