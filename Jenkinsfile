@@ -29,7 +29,7 @@ node('docker && linux-build') {
               "RELEASE=$BUILD_NUMBER"
             ]) {
                 stage('Prepare') {
-                  // notifyBuild("STARTED")
+                  notifyBuild("STARTED")
                   sh '''#!/bin/bash
                     set -xe
                     export CCACHE_DIR=$WORKSPACE/ccache
@@ -211,7 +211,7 @@ def notifyBuild(String buildStatus = 'STARTED') {
   def buildUrl = "http://jenkins.gotdns.ch"
   // def buildUrl = ${env.BUILD_URL}
   // buildUrl = buildUrl.replace("localhost", "jenkins.gotdns.ch")
-  def subject = "${env.JOB_NAME} - #${env.BUILD_NUMBER} ${buildStatus}"
+  def subject = "${env.JOB_NAME} - #${env.BUILD_NUMBER} (params.PATCH) ${buildStatus}"
   def summary = "${subject} (<${env.BUILD_URL}|Open>)"
  
   // Override default values based on build status
