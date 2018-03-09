@@ -50,12 +50,18 @@ node('docker && linux-build') {
                   '''
                 }
               
-                stage('Apply patches') {
-                sh '''#!/bin/bash
-                    set -xe
-                    git pull origin master
-                '''
-               }
+              withEnv([
+                "PATCH=$PATCH"
+              ]) {
+                  stage('Apply patches') {
+                    if (params.PATCH) {
+                      sh '''#!/bin/bash
+                          set -xe
+                          git pull origin master
+                      '''
+                    }
+                 }
+              }
 
                 stage('U-boot') {
                   sh '''#!/bin/bash
