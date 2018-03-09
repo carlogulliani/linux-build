@@ -206,7 +206,11 @@ def notifyBuild(String buildStatus = 'STARTED') {
   buildStatus =  buildStatus ?: 'Success'
 
   // Is it patched build?
-  def isPatched = ${params.PATCH} ? "(Patched)" : ""
+  def isPatched = ""
+  if (params.PATCH) 
+  {
+    isPatched = "(Patched)"
+  }
  
   // Default values
   def colorName = 'RED'
