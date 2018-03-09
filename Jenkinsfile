@@ -189,7 +189,7 @@ def notifyBuild(String buildStatus = 'STARTED') {
   // Default values
   def colorName = 'RED'
   def colorCode = '#FF0000'
-  def buildUrl = ${env.BUILD_URL}
+  // def buildUrl = ${env.BUILD_URL}
   // buildUrl = buildUrl.replace("localhost", "jenkins.gotdns.ch")
   def subject = "${env.JOB_NAME} » #${env.BUILD_NUMBER}"
   def summary = "${subject} (${env.BUILD_URL})"
