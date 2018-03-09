@@ -88,6 +88,14 @@ node('docker && linux-build') {
                     make -j$(nproc) $MAKE_TARGET
                   '''
                 }
+
+                stage('Copy images') {
+                  sh '''#1/bin/bash
+                    for file in *.xz; do
+                      cp $(basename "$file") /home/im/Desktop/rock64/firmware/tags/$(basename "$file")
+                    done
+                  '''
+                }
             }
 
             withEnv([
