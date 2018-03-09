@@ -1,5 +1,7 @@
 /build
-# /kernel
+/kernel
+!kernel/arch/arm64/boot/dts/rockchip/rk3328-rock64.dts
+!kernel/arch/arm64/boot/dts/rockchip/rk3328.dtsi
 /kernel-mainline
 /out
 /rkbin
@@ -12,5 +14,3 @@
 *.changes
 /arm-trusted-firmware
 /tmp
-!kernel/arch/arm64/boot/dts/rockchip/rk3328-rock64.dts
-!kernel/arch/arm64/boot/dts/rockchip/rk3328.dtsi
