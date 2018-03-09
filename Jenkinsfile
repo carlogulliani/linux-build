@@ -20,7 +20,7 @@ node('docker && linux-build') {
           checkout scm
 
           def environment = docker.image('ayufan/rock64-dockerfiles:x86_64')
-          def startDate = new Date().parse('dd/MM/yyyy HH:mm:ss')
+          //def startDate = new Date().parse('dd/MM/yyyy HH:mm:ss')
 
           environment.inside("--privileged -u 0:0") {
             withEnv([
@@ -184,8 +184,8 @@ node('docker && linux-build') {
 }
 
 def notifyBuild(String buildStatus = 'STARTED') {
-  def endDate = new Date()
-  def tookTime = groovy.time.TimeCategory.minus(endDate,startDate).toString()
+  //def endDate = new Date()
+  //def tookTime = groovy.time.TimeCategory.minus(endDate,startDate).toString()
 
   // build status of null means successful
   buildStatus =  buildStatus ?: 'Success'
@@ -195,7 +195,7 @@ def notifyBuild(String buildStatus = 'STARTED') {
   def colorCode = '#FF0000'
   // def buildUrl = ${env.BUILD_URL}
   // buildUrl = buildUrl.replace("localhost", "jenkins.gotdns.ch")
-  def subject = "${env.JOB_NAME} - #${env.BUILD_NUMBER} ${buildStatus} ${tookTime} after sec"
+  def subject = "${env.JOB_NAME} - #${env.BUILD_NUMBER} ${buildStatus}"
   def summary = "${subject} (${env.BUILD_URL})"
   def details = """<p>${env.JOB_NAME} » #${env.BUILD_NUMBER} (<a href='${env.BUILD_URL}'>Open</a>)</p>"""
  
