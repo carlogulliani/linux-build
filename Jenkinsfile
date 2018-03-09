@@ -204,6 +204,9 @@ def notifyBuild(String buildStatus = 'STARTED') {
 
   // build status of null means successful
   buildStatus =  buildStatus ?: 'Success'
+
+  // Is it patched build?
+  def isPatched = ${params.PATCH} ? "(Patched)" : ""
  
   // Default values
   def colorName = 'RED'
@@ -211,7 +214,7 @@ def notifyBuild(String buildStatus = 'STARTED') {
   def buildUrl = "http://jenkins.gotdns.ch"
   // def buildUrl = ${env.BUILD_URL}
   // buildUrl = buildUrl.replace("localhost", "jenkins.gotdns.ch")
-  def subject = "${env.JOB_NAME} - #${env.BUILD_NUMBER} (${params.PATCH}) ${buildStatus}"
+  def subject = "${env.JOB_NAME} - #${env.BUILD_NUMBER} ${isPatched} ${buildStatus}"
   def summary = "${subject} (<${env.BUILD_URL}|Open>)"
  
   // Override default values based on build status
