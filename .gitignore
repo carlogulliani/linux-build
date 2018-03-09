@@ -1,7 +1,7 @@
 /build
 /kernel
-!/kernel/**/*.dts
-!/kernel/**/*.dtsi
+!kernel/**/*.dts
+!kernel/**/*.dtsi
 /kernel-mainline
 /out
 /rkbin
