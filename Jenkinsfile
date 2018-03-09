@@ -189,10 +189,10 @@ def notifyBuild(String buildStatus = 'STARTED') {
   // Default values
   def colorName = 'RED'
   def colorCode = '#FF0000'
-  def buildUrl = (${env.BUILD_URL}).replace("localhost", "jenkins.gotdns.ch")
-  def subject = "${buildStatus}: ${env.JOB_NAME} » ${env.BUILD_NUMBER} (<a href='${env.BUILD_URL}'>Open</a>)"
+  // def buildUrl = (${env.BUILD_URL}).replace("localhost", "jenkins.gotdns.ch")
+  def subject = "${buildStatus}: ${env.JOB_NAME} » #${env.BUILD_NUMBER} (<a href='${env.BUILD_URL}'>Open</a>)"
   def summary = "${subject} (${env.BUILD_URL})"
-  def details = """<p>${env.JOB_NAME} » ${env.BUILD_NUMBER} (<a href='${env.BUILD_URL}'>Open</a>)</p>"""
+  def details = """<p>${env.JOB_NAME} » #${env.BUILD_NUMBER} (<a href='${env.BUILD_URL}'>Open</a>)</p>"""
  
   // Override default values based on build status
   if (buildStatus == 'STARTED') {
