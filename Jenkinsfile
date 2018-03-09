@@ -219,5 +219,5 @@ def notifyBuild(String buildStatus = 'STARTED') {
   }
  
   // Send notifications
-  slackSend (color: colorCode, message: summary, baseUrl: buildUrl)
+  slackSend (color: colorCode, message: summary)
 }
