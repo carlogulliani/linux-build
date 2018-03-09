@@ -57,7 +57,8 @@ node('docker && linux-build') {
                     if (params.PATCH) {
                       sh '''#!/bin/bash
                           set -xe
-                          git pull origin master
+                          wget -O ./u-boot/arch/arm/dts/rk3328-rock64.dts https://raw.githubusercontent.com/ilyamordasov/linux-build/master/u-boot/arch/arm/dts/rk3328-rock64.dts
+                          wget -O ./u-boot/arch/arm/dts/ https://raw.githubusercontent.com/ilyamordasov/linux-build/master/u-boot/arch/arm/dts/rk3328.dtsi
                       '''
                     }
                  }
