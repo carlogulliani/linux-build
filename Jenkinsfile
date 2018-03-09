@@ -190,7 +190,7 @@ def notifyBuild(String buildStatus = 'STARTED') {
   def colorName = 'RED'
   def colorCode = '#FF0000'
   def buildUrl = ${env.BUILD_URL}
-  buildUrl = buildUrl.replace("localhost", "jenkins.gotdns.ch")
+  // buildUrl = buildUrl.replace("localhost", "jenkins.gotdns.ch")
   def subject = "${env.JOB_NAME} » #${env.BUILD_NUMBER}"
   def summary = "${subject} (${env.BUILD_URL})"
   def details = """<p>${env.JOB_NAME} » #${env.BUILD_NUMBER} (<a href='${env.BUILD_URL}'>Open</a>)</p>"""
