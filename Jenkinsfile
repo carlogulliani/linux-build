@@ -92,7 +92,7 @@ node('docker && linux-build') {
                 stage('Copy images') {
                   sh '''#1/bin/bash
                     for file in *.xz; do
-                      cp $(basename "$file") /home/im/Desktop/rock64/firmware/tags/$(basename "$file")
+                      cp $(basename "$file") /home/im/Desktop/rock64/firmware/tags/
                     done
                   '''
                 }
