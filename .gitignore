@@ -1,5 +1,6 @@
 /build
 /kernel
+/kernel-mainline
 /out
 /rkbin
 /u-boot
@@ -9,3 +10,6 @@
 *.deb
 /package/rtk_bt
 *.changes
+/arm-trusted-firmware
+/tmp
+.DS_Store

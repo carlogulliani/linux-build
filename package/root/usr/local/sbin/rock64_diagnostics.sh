@@ -6,8 +6,14 @@
 # Written 2017 Peter Feerick and contributors, released under GPLv3
 #
 
-Log="/var/log/${0##*/}.log"
-VerifyRepairExcludes="/etc/|/boot/|cache|getty"
+#if user doesn't have permission for /var/log, write to /tmp
+if [ -w /var/log ]; then
+	Log="/var/log/${0##*/}.log"
+else
+	Log="/tmp/${0##*/}.log"
+fi
+
+VerifyRepairExcludes="/etc/|/boot/|cache|getty|/var/lib/smartmontools/"
 
 Main() {
 	# check if stdout is a terminal...
@@ -117,7 +123,10 @@ GenerateLog() {
 	echo -e "\n### ifconfig:\n"
 	ifconfig
 
-	echo -e "### partitions:\n"
+	echo -e "### lsusb:\n"
+	lsusb 2>/dev/null ; echo "" ; lsusb -t 2>/dev/null
+	
+	echo -e "\n### partitions:\n"
 	cat /proc/partitions
 
 	echo -e "\n### df:\n"
@@ -127,13 +136,26 @@ GenerateLog() {
 
 	echo -e "\n### Loaded modules:\n\n$(lsmod)"
 
-	echo -e "\n### package version:\n"
-	apt-cache policy linux-pine64-package
+        if [[ $(dpkg-query -W -f='${Status}' linux-pine64-package 2>/dev/null | grep -c "ok installed") == "1" ]]; then
+                echo -e "\n### linux-pine64-package version:\n"
+                apt-cache policy linux-pine64-package
+        fi
+
+        if [[ $(dpkg-query -W -f='${Status}' linux-rock64-package 2>/dev/null | grep -c "ok installed") == "1" ]]; then
+                echo -e "\n### linux-rock64-package version:\n"
+                apt-cache policy linux-rock64-package
+        fi
 
 	echo -e "\n### Kernel version:\n"
 	uname -a
 
-	echo -e "\n### Current sysinfo:\n\n$(iostat -p ALL | grep -v "^loop")\n\n$(vmstat -w)\n\n$(free -h)\n\n$(dmesg | tail -n 250)"
+        echo -e "Searching for info on flash media... "
+        get_flash_information
+	which iostat >/dev/null 2>&1 && \
+
+	echo -e "\n### Current sysinfo:\n\n"
+	which iostat >/dev/null 2>&1 && echo -e "$(iostat -p ALL | grep -v '^loop')\n\n"
+	echo -e "$(vmstat -w)\n\n$(free -h)\n\n$(dmesg | tail -n 250)"
 } # GenerateLog
 
 CheckCard() {
@@ -267,6 +289,19 @@ GetDevice() {
 	fi
 } # GetDevice
 
+get_flash_information() {
+	# http://www.bunniestudios.com/blog/?page_id=1022
+	find /sys -name oemid | while read Device ; do
+		DeviceNode="${Device%/*}"
+		DeviceName="${DeviceNode##*/}"
+		echo -e "\n### ${DeviceName} info:\n"
+		find "${DeviceNode}" -maxdepth 1 -type f | while read ; do
+			NodeName="${REPLY##*/}"
+			echo -e "$(printf "%20s" ${NodeName}): $(cat "${DeviceNode}/${NodeName}" | tr '\n' " ")"
+		done
+	done
+} # get_flash_information
+
 UploadSupportLogs() {
 	#prevent colour escape sequences in log
 	BOLD=''
@@ -286,18 +321,17 @@ UploadSupportLogs() {
 
 	echo -e "Generating diagnostic logs... "
 	GenerateLog > ${Log}
-	echo -e "Running file integrity checks... "
-	   	VerifyFiles >> ${Log}
+   	[[ -n ${VERIFY} ]] && (echo -e "Running file integrity checks... " ; VerifyFiles >> ${Log})
 
 	#check network connection
-	fping sprunge.us | grep -q alive || \
+	fping ix.io | grep -q alive || \
 	(echo "Network/firewall problem detected. Please fix this or upload ${Log} manually." >&2 ; exit 1)
 
 	echo -ne "\nIP obfuscated log uploaded to \c"
 	# obfuscate IPv4 addresses somehow but not too much
 	cat ${Log} | \
 		sed -E 's/([0-9]{1,3}\.)([0-9]{1,3}\.)([0-9]{1,3}\.)([0-9]{1,3})/XXX.XXX.\3\4/g' \
-		| curl -F 'sprunge=<-' http://sprunge.us
+		| curl -F 'f:1=<-' http://ix.io
 
 	echo -e "Please post the above URL on the forum where you've been asked for it."
 } # UploadSupportLogs
@@ -365,13 +399,21 @@ ParseOptions() {
 			exit 0
 			;;
 
-		u|U)
+		u)
 			# upload generated logs for support
 			RequireRoot
 			UploadSupportLogs
 			exit 0
 			;;
 
+		U)
+			# verify files and upload generated logs for support
+			RequireRoot
+			export VERIFY=TRUE
+			UploadSupportLogs
+			exit 0
+			;;
+			
 		c|C)
 			# check card mode
 			CheckCard "${OPTARG}"
@@ -399,6 +441,7 @@ MonitorMode() {
 	LastIrqStat=0
 	LastSoftIrqStat=0
 	LastCpuStatCheck=0
+	LastTotal=0
 
 	DisplayHeader="Time        CPU    load %cpu %sys %usr %nice %io %irq"
 	CPUs=normal
@@ -419,7 +462,8 @@ MonitorMode() {
 		else
 			CpuFreq='n/a'
 		fi
-		echo -e "\n$(date "+%H:%M:%S"): $(printf "%4s" ${CpuFreq})MHz $(printf "%5s" ${LoadAvg}) $(ProcessStats)\c"
+		ProcessStats
+		echo -e "\n$(date "+%H:%M:%S"): $(printf "%4s" ${CpuFreq})MHz $(printf "%5s" ${LoadAvg}) ${procStats}\c"
 		if [ "X${SocTemp}" != "Xn/a" ]; then
 			read SocTemp </sys/devices/virtual/thermal/thermal_zone0/temp
 			if [ ${SocTemp} -ge 1000 ]; then
@@ -442,30 +486,37 @@ ProcessStats() {
 		IOWaitLoad=$5
 		IrqCombinedLoad=$6
 	else
-		set $(awk -F" " '/^cpu / {print $2"\t"$3"\t"$4"\t"$5"\t"$6"\t"$7"\t"$8}' </proc/stat)
-		UserStat=$1
-		NiceStat=$2
-		SystemStat=$3
-		IdleStat=$4
-		IOWaitStat=$5
-		IrqStat=$6
-		SoftIrqStat=$7
+		procStatLine=(`sed -n 's/^cpu\s//p' /proc/stat`)
+		UserStat=${procStatLine[0]}
+		NiceStat=${procStatLine[1]}
+		SystemStat=${procStatLine[2]}
+		IdleStat=${procStatLine[3]}
+		IOWaitStat=${procStatLine[4]}
+		IrqStat=${procStatLine[5]}
+		SoftIrqStat=${procStatLine[6]}
 
+		Total=0
+		for eachstat in ${procStatLine[@]}; do
+			Total=$(( ${Total} + ${eachstat} ))
+		done
+		
 		UserDiff=$(( ${UserStat} - ${LastUserStat} ))
 		NiceDiff=$(( ${NiceStat} - ${LastNiceStat} ))
 		SystemDiff=$(( ${SystemStat} - ${LastSystemStat} ))
-		IdleDiff=$(( ${IdleStat} - ${LastIdleStat} ))
 		IOWaitDiff=$(( ${IOWaitStat} - ${LastIOWaitStat} ))
 		IrqDiff=$(( ${IrqStat} - ${LastIrqStat} ))
 		SoftIrqDiff=$(( ${SoftIrqStat} - ${LastSoftIrqStat} ))
 
-		Total=$(( ${UserDiff} + ${NiceDiff} + ${SystemDiff} + ${IdleDiff} + ${IOWaitDiff} + ${IrqDiff} + ${SoftIrqDiff} ))
-		CPULoad=$(( ( ${Total} - ${IdleDiff} ) * 100 / ${Total} ))
-		UserLoad=$(( ${UserDiff} *100 / ${Total} ))
-		SystemLoad=$(( ${SystemDiff} *100 / ${Total} ))
-		NiceLoad=$(( ${NiceDiff} *100 / ${Total} ))
-		IOWaitLoad=$(( ${IOWaitDiff} *100 / ${Total} ))
-		IrqCombinedLoad=$(( ( ${IrqDiff} + ${SoftIrqDiff} ) *100 / ${Total} ))
+		diffIdle=$(( ${IdleStat} - ${LastIdleStat} ))
+		diffTotal=$(( ${Total} - ${LastTotal} ))
+		diffX=$(( ${diffTotal} - ${diffIdle} ))
+		CPULoad=$(( ${diffX}* 100 / ${diffTotal} ))
+		UserLoad=$(( ${UserDiff}* 100 / ${diffTotal} ))
+		SystemLoad=$(( ${SystemDiff}* 100 / ${diffTotal} ))
+		NiceLoad=$(( ${NiceDiff}* 100 / ${diffTotal} ))
+		IOWaitLoad=$(( ${IOWaitDiff}* 100 / ${diffTotal} ))
+		IrqCombined=$(( ${IrqDiff} + ${SoftIrqDiff} ))
+		IrqCombinedLoad=$(( ${IrqCombined}* 100 / ${diffTotal} ))
 
 		LastUserStat=${UserStat}
 		LastNiceStat=${NiceStat}
@@ -474,9 +525,10 @@ ProcessStats() {
 		LastIOWaitStat=${IOWaitStat}
 		LastIrqStat=${IrqStat}
 		LastSoftIrqStat=${SoftIrqStat}
+		LastTotal=${Total}
 	fi
-	echo -e "$(printf "%3s" ${CPULoad})%$(printf "%4s" ${SystemLoad})%$(printf "%4s" ${UserLoad})%$(printf "%4s" ${NiceLoad})%$(printf "%4s" ${IOWaitLoad})%$(printf "%4s" ${IrqCombinedLoad})%"
 
+	procStats=$(echo -e "$(printf "%3s" ${CPULoad})%$(printf "%4s" ${SystemLoad})%$(printf "%4s" ${UserLoad})%$(printf "%4s" ${NiceLoad})%$(printf "%4s" ${IOWaitLoad})%$(printf "%4s" ${IrqCombinedLoad})%")
 } # ProcessStats
 
 Main "$@"

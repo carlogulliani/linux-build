@@ -10,13 +10,14 @@ TARGET=""
 SIZE=""
 ROOTFS_PATH=""
 BOOT_PATH=""
+BOARD_TARGET=""
 
 PATH=$PATH:$TOOLPATH
 
 source $LOCALPATH/build/partitions.sh
 
 usage() {
-	echo -e "\nUsage: build/mk-image.sh -c rk3288 -t system -s 4000 -b boot.img -r rk-rootfs-build/linaro-rootfs.img \n"
+	echo -e "\nUsage: build/mk-image.sh -c rk3288 -d path-with-idbloader -t system -s 4000 -b boot.img -r rk-rootfs-build/linaro-rootfs.img \n"
 	echo -e "       build/mk-image.sh -c rk3288 -t boot\n"
 }
 finish() {
@@ -26,7 +27,7 @@ finish() {
 trap finish ERR
 
 OLD_OPTIND=$OPTIND
-while getopts "c:t:s:r:b:o:h" flag; do
+while getopts "c:t:s:r:b:o:d:h" flag; do
 	case $flag in
 		c)
 			CHIP="$OPTARG"
@@ -47,6 +48,9 @@ while getopts "c:t:s:r:b:o:h" flag; do
 		b)
 			BOOT_PATH="$OPTARG"
 			;;
+		d)
+			OUT="$OPTARG"
+			;;
 		o)
 			OUT_IMAGE="$OPTARG"
 			;;
@@ -54,7 +58,7 @@ while getopts "c:t:s:r:b:o:h" flag; do
 done
 OPTIND=$OLD_OPTIND
 
-if [ ! -e ${EXTLINUXPATH}/${CHIP}.conf ]; then
+if [ ! -f "${EXTLINUXPATH}/${CHIP}.conf" ]; then
 	CHIP="rk3288"
 fi
 
@@ -62,6 +66,8 @@ if [ ! $CHIP ] && [ ! $TARGET ]; then
 	usage
 	exit
 fi
+
+BOARD_TARGET="${BOARD_TARGET-$CHIP}"
 
 generate_boot_image() {
 	BOOT=${OUT}/boot.img
@@ -80,13 +86,19 @@ generate_boot_image() {
 }
 
 generate_system_image() {
+	if [ ! -f "${BOOT_PATH}" ]; then
+		echo -e "\e[31m CAN'T FIND BOOT IMAGE \e[0m"
+		usage
+		exit 1
+	fi
+
 	SYSTEM="${OUT_IMAGE}"
 	rm -rf ${SYSTEM}
 
 	echo "Generate System image : ${SYSTEM} !"
 
 	if [[ -z "$SIZE" ]]; then
-		SIZE=256
+		SIZE=120
 	fi
 
 	dd if=/dev/zero of=${SYSTEM} bs=1M count=0 seek=$SIZE status=none
@@ -94,32 +106,37 @@ generate_system_image() {
 	# burn u-boot
 	echo "Burn u-boot..."
 	if [ "$CHIP" == "rk3288" ] || [ "$CHIP" == "rk3036" ]; then
-		dd if=${OUT}/u-boot/idbloader.img of=${SYSTEM} seek=${LOADER1_START} conv=notrunc status=none
+		dd if=${OUT}/idbloader.img of=${SYSTEM} seek=${LOADER1_START} conv=notrunc status=none
 	elif [ "$CHIP" == "rk3399" ]; then
-		dd if=${OUT}/u-boot/idbloader.img of=${SYSTEM} seek=${LOADER1_START} conv=notrunc status=none
+		dd if=${OUT}/idbloader.img of=${SYSTEM} seek=${LOADER1_START} conv=notrunc status=none
 
-		dd if=${OUT}/u-boot/uboot.img of=${SYSTEM} seek=${LOADER2_START} conv=notrunc status=none
-		dd if=${OUT}/u-boot/trust.img of=${SYSTEM} seek=${ATF_START} conv=notrunc status=none
+		if [[ -e ${OUT}/uboot.img ]]; then
+			dd if=${OUT}/uboot.img of=${SYSTEM} seek=${LOADER2_START} conv=notrunc status=none
+		fi
+
+		if [[ -e ${OUT}/trust.img ]]; then
+			dd if=${OUT}/trust.img of=${SYSTEM} seek=${ATF_START} conv=notrunc status=none
+		fi
 	elif [ "$CHIP" == "rk3328" ]; then
-		dd if=${OUT}/u-boot/idbloader.img of=${SYSTEM} seek=${LOADER1_START} conv=notrunc status=none
+		dd if=${OUT}/idbloader.img of=${SYSTEM} seek=${LOADER1_START} conv=notrunc status=none
 
-		dd if=${OUT}/u-boot/uboot.img of=${SYSTEM} seek=${LOADER2_START} conv=notrunc status=none
-		dd if=${OUT}/u-boot/trust.img of=${SYSTEM} seek=${ATF_START} conv=notrunc status=none
+		if [[ -e ${OUT}/uboot.img ]]; then
+			dd if=${OUT}/uboot.img of=${SYSTEM} seek=${LOADER2_START} conv=notrunc status=none
+		fi
+
+		if [[ -e ${OUT}/trust.img ]]; then
+			dd if=${OUT}/trust.img of=${SYSTEM} seek=${ATF_START} conv=notrunc status=none
+		fi
 	fi
 
 	echo "Burn boot..."
-	if [ ! -e ${BOOT_PATH} ]; then
-		echo -e "\e[31m CAN'T FIND BOOT IMAGE \e[0m"
-		exit 1
-	fi
 	dd if=${BOOT_PATH} of=${SYSTEM} seek=${BOOT_START} conv=notrunc status=none
 
-	echo "Burn rootfs..."
-	if [ ! -e ${ROOTFS_PATH} ]; then
-		echo -e "\e[31m CAN'T FIND ROOTFS IMAGE \e[0m"
-		exit 1
+	if [ -n "${ROOTFS_PATH}" ]; then
+		echo "Burn rootfs..."
+		dd if=${ROOTFS_PATH} of=${SYSTEM} seek=${ROOTFS_START} conv=notrunc status=none
 	fi
-	dd if=${ROOTFS_PATH} of=${SYSTEM} seek=${ROOTFS_START} conv=notrunc status=none
+
 	dd if=/dev/zero of=${SYSTEM} count=2048 oflag=append conv=notrunc
 
 	echo Updating GPT...
@@ -130,7 +147,9 @@ generate_system_image() {
 	parted -s ${SYSTEM} unit s mkpart loader2 ${LOADER2_START} $(expr ${ATF_START} - 1)
 	parted -s ${SYSTEM} unit s mkpart atf ${ATF_START} $(expr ${BOOT_START} - 1)
 	parted -s ${SYSTEM} unit s mkpart boot fat16 ${BOOT_START} $(expr ${ROOTFS_START} - 1)
-	parted -s ${SYSTEM} unit s mkpart root ext4 ${ROOTFS_START} 100%
+	if [ -n "${ROOTFS_PATH}" ]; then
+		parted -s ${SYSTEM} unit s mkpart root ext4 ${ROOTFS_START} 100%
+	fi
 	parted -s ${SYSTEM} set 6 legacy_boot on
 }
 

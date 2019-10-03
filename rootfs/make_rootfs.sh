@@ -55,6 +55,14 @@ fi
 
 TEMP=$(mktemp -d)
 cleanup() {
+	if [[ "$DEBUG" == "shell" ]]; then
+		pushd "$DEST"
+		bash
+		popd
+	fi
+	if [ -e "$DEST/proc/mdstat" ]; then
+		umount "$DEST/proc/mdstat" || true
+	fi
 	if [ -e "$DEST/proc/cmdline" ]; then
 		umount "$DEST/proc"
 	fi
@@ -70,21 +78,27 @@ trap cleanup EXIT
 
 ROOTFS=""
 TAR_OPTIONS=""
+DISTRIB=""
 
 case $DISTRO in
 	arch)
 		ROOTFS="http://archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz"
 		TAR_OPTIONS="-z"
+		DISTRIB="arch"
 		;;
-	xenial|zesty|artful)
+	xenial|zesty|artful|bionic)
 		version=$(curl -s https://api.github.com/repos/ayufan-rock64/linux-rootfs/releases/latest | jq -r ".tag_name")
 		ROOTFS="https://github.com/ayufan-rock64/linux-rootfs/releases/download/${version}/ubuntu-${DISTRO}-${VARIANT}-${version}-${BUILD_ARCH}.tar.xz"
+		FALLBACK_ROOTFS="https://github.com/ayufan-rock64/linux-rootfs/releases/download/${version}/ubuntu-${DISTRO}-minimal-${version}-${BUILD_ARCH}.tar.xz"
 		TAR_OPTIONS="-J --strip-components=1 binary"
+		DISTRIB="ubuntu"
 		;;
 	sid|jessie|stretch)
 		version=$(curl -s https://api.github.com/repos/ayufan-rock64/linux-rootfs/releases/latest | jq -r ".tag_name")
 		ROOTFS="https://github.com/ayufan-rock64/linux-rootfs/releases/download/${version}/debian-${DISTRO}-${VARIANT}-${version}-${BUILD_ARCH}.tar.xz"
+		FALLBACK_ROOTFS="https://github.com/ayufan-rock64/linux-rootfs/releases/download/${version}/debian-${DISTRO}-minimal-${version}-${BUILD_ARCH}.tar.xz"
 		TAR_OPTIONS="-J --strip-components=1 binary"
+		DISTRIB="debian"
 		;;
 	*)
 		echo "Unknown distribution: $DISTRO"
@@ -93,12 +107,19 @@ case $DISTRO in
 esac
 
 mkdir -p $BUILD
-TARBALL="$TEMP/$(basename $ROOTFS)"
+mkdir -p tmp
+TARBALL="tmp/$(basename $ROOTFS)"
 
 mkdir -p "$BUILD"
 if [ ! -e "$TARBALL" ]; then
 	echo "Downloading $DISTRO rootfs tarball ..."
-	wget -O "$TARBALL" "$ROOTFS"
+	pushd tmp
+	if ! flock "$(basename "$ROOTFS").lock" wget -c "$ROOTFS"; then
+		TARBALL="tmp/$(basename "$FALLBACK_ROOTFS")"
+		echo "Downloading fallback $DISTRO rootfs tarball ..."
+		flock "$(basename "$FALLBACK_ROOTFS").lock" wget -c "$FALLBACK_ROOTFS"
+	fi
+	popd
 fi
 
 # Extract with BSD tar
@@ -106,7 +127,6 @@ echo -n "Extracting ... "
 set -x
 tar -xf "$TARBALL" -C "$DEST" $TAR_OPTIONS
 echo "OK"
-rm -f "$TARBALL"
 
 # Add qemu emulation.
 cp /usr/bin/qemu-aarch64-static "$DEST/usr/bin"
@@ -124,26 +144,26 @@ do_chroot() {
 	mount -o bind /tmp "$DEST/tmp"
 	chroot "$DEST" mount -t proc proc /proc
 	chroot "$DEST" mount -t sysfs sys /sys
+	chroot "$DEST" mount --bind /dev/null /proc/mdstat
 	chroot "$DEST" $cmd
-	chroot "$DEST" umount /sys
-	chroot "$DEST" umount /proc
+	chroot "$DEST" umount /sys /proc/mdstat /proc
 	umount "$DEST/tmp"
 }
 
 do_install() {
 	FILE=$(basename "$1")
 	cp "$1" "$DEST/$(basename "$1")"
-	do_chroot dpkg -i "$FILE" || do_chroot bash
+	yes | do_chroot dpkg -i "$FILE"
 	do_chroot rm "$FILE"
 }
 
 # Run stuff in new system.
-case $DISTRO in
+case $DISTRIB in
 	arch)
 		echo "No longer supported"
 		exit 1
 		;;
-	xenial|sid|jessie|stretch)
+	debian|ubuntu)
 		rm "$DEST/etc/resolv.conf"
 		cp /etc/resolv.conf "$DEST/etc/resolv.conf"
 		case "$VARIANT" in
@@ -158,34 +178,35 @@ case $DISTRO in
 				;;
 		esac
 		EXTRA_ARCHS="arm64"
-		cat <<EOF | do_chroot bash
+		do_chroot apt-key add - < rootfs/ayufan-ppa.gpg
+		do_chroot apt-key add - < rootfs/ayufan-deb-ayufan-eu.gpg
+		cat <<EOF > "$DEST/install_script.bash"
 #!/bin/sh
 set -ex
 export DEBIAN_FRONTEND=noninteractive
 locale-gen en_US.UTF-8
 # add non-free
 sed -i 's/main contrib$/main contrib non-free/g' /etc/apt/sources.list
+if [[ "$DISTRO" == "stretch" ]]; then
+	add-apt-repository "deb http://ppa.launchpad.net/ayufan/rock64-ppa/ubuntu bionic main"
+elif [[ "$DISTRIB" == "debian" ]]; then
+	add-apt-repository "deb http://ppa.launchpad.net/ayufan/rock64-ppa/ubuntu xenial main"
+else
+	add-apt-repository "deb http://ppa.launchpad.net/ayufan/rock64-ppa/ubuntu $DISTRO main"
+fi
 apt-get -y update
 apt-get -y install dosfstools curl xz-utils iw rfkill wpasupplicant openssh-server alsa-utils \
 	nano git build-essential vim jq wget ca-certificates software-properties-common dirmngr \
-	gdisk parted figlet htop fake-hwclock usbutils sysstat fping iperf3 iozone3
+	gdisk parted figlet htop fake-hwclock usbutils sysstat fping iperf3 iozone3 ntp \
+	network-manager psmisc flash-kernel u-boot-tools ifupdown resolvconf \
+	net-tools mtd-utils rsync
+if [[ "$DISTRIB" == "debian" ]]; then
+	apt-get -y install firmware-realtek
+elif [[ "$DISTRIB" == "ubuntu" ]]; then
+	apt-get -y install landscape-common linux-firmware
+fi
+#apt-get dist-upgrade -y
 fake-hwclock save
-apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys BF428671
-if [[ "$DISTRO" == "jessie" ]]; then
-	REPO=xenial
-elif [[ "$DISTRO" == "stretch" ]]; then
-	REPO=xenial
-else
-	REPO="$DISTRO"
-fi
-if [[ "$DISTRO" == "xenial" || "$DISTRO" == "zesty" || "$DISTRO" == "artful" ]]; then
-	apt-get -y install landscape-common
-fi
-add-apt-repository "deb http://ppa.launchpad.net/ayufan/rock64-ppa/ubuntu \$REPO main"
-curl -fsSL http://deb.ayufan.eu/orgs/ayufan-rock64/archive.key | apt-key add -
-apt-get update -y
-apt-get dist-upgrade -y
-apt-get install -y flash-kernel u-boot-tools
 if [[ "$DEBUSER" != "root" ]]; then
 	adduser --gecos $DEBUSER --disabled-login $DEBUSER --uid 1000
 	chown -R 1000:1000 /home/$DEBUSER
@@ -195,8 +216,23 @@ fi
 echo "$DEBUSER:$DEBUSERPW" | chpasswd
 apt-get clean
 EOF
+		do_chroot bash "/install_script.bash"
+		rm -f "$DEST/install_script.bash"
 		echo -n UTC > "$DEST/etc/timezone"
-		echo "Rockchip RK3328 Rock64" > "$DEST/etc/flash-kernel/machine"
+		case $MODEL in
+			rock64)
+				echo "Pine64 Rock64" > "$DEST/etc/flash-kernel/machine"
+				;;
+
+			rockpro64)
+				echo "Pine64 RockPro64" > "$DEST/etc/flash-kernel/machine"
+				;;
+
+			*)
+				echo "Unsupported model: $MODEL"
+				;;
+		esac
+
 		cat > "$DEST/etc/apt/sources.list.d/ayufan-rock64.list" <<EOF
 deb http://deb.ayufan.eu/orgs/ayufan-rock64/releases /
 
@@ -207,7 +243,7 @@ EOF
 $MODEL
 EOF
 		cat > "$DEST/etc/fstab" <<EOF
-LABEL=boot /boot/efi vfat defaults 0 0
+LABEL=boot /boot/efi vfat defaults,sync 0 0
 EOF
 		cat > "$DEST/etc/hosts" <<EOF
 127.0.0.1 localhost
@@ -227,6 +263,8 @@ EOF
 		for arch in $EXTRA_ARCHS; do
 			if [[ "$arch" != "$BUILD_ARCH" ]]; then
 				do_chroot dpkg --add-architecture "$arch"
+				do_chroot apt-get update -y
+				do_chroot apt-get install -y "libc6:$arch" "libstdc++6:$arch"
 			fi
 		done
 		for package in "$@"; do
@@ -243,8 +281,17 @@ EOF
 				do_chroot systemctl set-default graphical.target
 				;;
 
+			lxde)
+				do_chroot /usr/local/sbin/install_desktop.sh lxde
+				do_chroot systemctl set-default graphical.target
+				;;
+
 			openmediavault)
 				do_chroot /usr/local/sbin/install_openmediavault.sh
+				;;
+
+			containers)
+				do_chroot /usr/local/sbin/install_container_linux.sh
 				;;
 		esac
 		do_chroot systemctl enable ssh-keygen
@@ -254,7 +301,10 @@ EOF
 		do_chroot ln -s /run/resolvconf/resolv.conf /etc/resolv.conf
 		do_chroot apt-get clean
 		;;
+
 	*)
+		echo "Unsupported distrib:$DISTRIB and distro:$DISTRO..."
+		exit 1
 		;;
 esac
 
@@ -266,6 +316,7 @@ mkdir -p "$DEST/usr"
 rm -f "$DEST/usr/bin/qemu-arm-static"
 rm -f "$DEST/usr/bin/qemu-aarch64-static"
 rm -f "$DEST/usr/sbin/policy-rc.d"
+rm -f "$DEST/usr/local/bin/mdadm"
 rm -f "$DEST/var/lib/dbus/machine-id"
 rm -f "$DEST/SHA256SUMS"
 

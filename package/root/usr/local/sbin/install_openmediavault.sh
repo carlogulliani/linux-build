@@ -1,12 +1,23 @@
 #!/bin/bash
 
-if [[ "$(lsb_release -c -s)" != "jessie" ]]; then
-	echo "This script only works on Debian/Jessie"
-	exit 1
-fi
+case "$(lsb_release -c -s)" in
+	jessie)
+		RELEASE="erasmus"
+		EXTRAS_URL="https://github.com/OpenMediaVault-Plugin-Developers/packages/raw/master/openmediavault-omvextrasorg_latest_all3.deb"
+		;;
+
+	stretch)
+		RELEASE="arrakis"
+		EXTRAS_URL="https://github.com/OpenMediaVault-Plugin-Developers/packages/raw/master/openmediavault-omvextrasorg_latest_all4.deb"
+		;;
+
+	*)
+		echo "This script only works on Debian/Jessie|Stretch"
+		exit 1
+esac
 
 echo "OpenMediaVault installation script"
-echo "Script is based on Armbian and tkaiser work: https://github.com/armbian/build/blob/master/scripts/customize-image.sh.template"
+echo "Script is based on Armbian, OMV and tkaiser work: https://github.com/armbian/build/blob/master/config/templates/customize-image.sh.template"
 echo ""
 echo "This script overwrites network interfaces."
 echo "Make sure that you configured them in OpenMediaVault interface before rebooting."
@@ -25,34 +36,33 @@ set -xe
 
 #Add OMV source.list and Update System
 cat > /etc/apt/sources.list.d/openmediavault.list <<- EOF
-# deb http://packages.openmediavault.org/public erasmus main
-deb https://openmediavault.github.io/packages/ erasmus main
+# deb http://packages.openmediavault.org/public $RELEASE main
+deb https://openmediavault.github.io/packages/ $RELEASE main
 ## Uncomment the following line to add software from the proposed repository.
-# deb http://packages.openmediavault.org/public erasmus-proposed main
-deb https://openmediavault.github.io/packages/ erasmus-proposed main
+# deb http://packages.openmediavault.org/public $RELEASE-proposed main
+deb https://openmediavault.github.io/packages/ $RELEASE-proposed main
 
 ## This software is not part of OpenMediaVault, but is offered by third-party
 ## developers as a service to OpenMediaVault users.
-# deb http://packages.openmediavault.org/public erasmus partner
+# deb http://packages.openmediavault.org/public $RELEASE partner
 EOF
 
 # Add OMV and OMV Plugin developer keys
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 24863F0C716B980B 7E7A6C592EF35D13 7AA630A1EDEE7D73
 apt-get update -y
-apt-get --yes --force-yes --allow-unauthenticated install openmediavault-keyring
-apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 7AA630A1EDEE7D73
 
 # install debconf-utils, postfix and OMV
 debconf-set-selections <<< "postfix postfix/mailname string openmediavault"
 debconf-set-selections <<< "postfix postfix/main_mailer_type string 'No configuration'"
-apt-get -y install \
-    debconf-utils postfix
+apt-get -y install debconf-utils postfix
 
 # install openmediavault
-apt-get --yes install openmediavault
+apt-get --yes install openmediavault openmediavault-keyring
 
 # install OMV extras, enable folder2ram, tweak some settings
 FILE=$(mktemp)
-wget http://omv-extras.org/openmediavault-omvextrasorg_latest_all3.deb -qO $FILE && dpkg -i $FILE && rm $FILE
+wget "$EXTRAS_URL" -qO $FILE
+dpkg -i $FILE
 /usr/sbin/omv-update
 
 # FIX TFTPD ipv4
@@ -129,14 +139,15 @@ EOF
 /usr/sbin/omv-mkconf cpufrequtils
 /usr/sbin/omv-mkconf interfaces
 
-# make sure that rrdcached does exist
-mkdir -p /var/lib/rrdcached
+# make sure that rrdcached/php does exist
+mkdir -p /var/lib/rrdcached /var/lib/php
 
 # disable rrdcached
 systemctl disable rrdcached
 
 /sbin/folder2ram -enablesystemd
 /sbin/folder2ram -mountall || true
+/sbin/folder2ram -umountall || true
 
 # init OMV
 # /usr/sbin/omv-initsystem

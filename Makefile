@@ -2,188 +2,44 @@ export RELEASE_NAME ?= 0.1~dev
 export RELEASE ?= 1
 export BOOT_TOOLS_BRANCH ?= master
 export KERNEL_DIR ?= kernel
+export UBOOT_DIR ?= u-boot
 
-KERNEL_LOCALVERSION ?= -rockchip-ayufan-$(RELEASE)
+BUILD_SYSTEMS := bionic xenial jessie stretch
+BUILD_VARIANTS := minimal mate lxde i3 openmediavault containers
+BUILD_ARCHS := armhf arm64
+BUILD_MODELS := rock64 rockpro64
+
+KERNEL_EXTRAVERSION ?= -rockchip-ayufan-$(RELEASE)
 KERNEL_DEFCONFIG ?= rockchip_linux_defconfig
-KERNEL_MAKE ?= make -C $(KERNEL_DIR) \
-	LOCALVERSION=$(KERNEL_LOCALVERSION) \
-	KDEB_PKGVERSION=$(RELEASE_NAME) \
-	ARCH=arm64 \
-	CROSS_COMPILE="ccache aarch64-linux-gnu-"
-KERNEL_RELEASE ?= $(shell $(KERNEL_MAKE) -s kernelversion)$(KERNEL_LOCALVERSION)
 
-KERNEL_PACKAGE ?= linux-image-$(KERNEL_RELEASE)_$(RELEASE_NAME)_arm64.deb
-KERNEL_HEADERS_PACKAGES ?= linux-headers-$(KERNEL_RELEASE)_$(RELEASE_NAME)_arm64.deb
-PACKAGES := linux-rock64-package-$(RELEASE_NAME)_all.deb $(KERNEL_PACKAGE) $(KERNEL_HEADERS_PACKAGES)
+BOARD_TARGET ?= rock64
+
+ifeq (rock64,$(BOARD_TARGET))
+ATF_PLAT ?= rk322xh
+UBOOT_DEFCONFIG ?= rock64-rk3328_defconfig
+BOARD_CHIP ?= rk3328
+else ifeq (rockpro64,$(BOARD_TARGET))
+ATF_PLAT ?= rk3399
+UBOOT_DEFCONFIG ?= rockpro64-rk3399_defconfig
+BL31 ?= rkbin/rk33/rk3399_bl31_v1.00.elf
+BOARD_CHIP ?= rk3399
+USE_UBOOT_SPL ?= yes
+else
+$(error Unsupported BOARD_TARGET)
+endif
+
+REMOTE_HOST ?= rock64.home
 
 IMAGE_SUFFIX := $(RELEASE_NAME)-$(RELEASE)
 
 all: linux-rock64
 
-info:
-	echo version: $(KERNEL_VERSION)
-	echo release: $(KERNEL_RELEASE)
+include Makefile.atf.mk
+include Makefile.uboot.mk
+include Makefile.package.mk
+include Makefile.kernel.mk
+include Makefile.system.mk
+include Makefile.variants.mk
+include Makefile.loader.mk
+include Makefile.dev.mk
 
-linux-rock64-$(RELEASE_NAME)_arm64.deb: $(PACKAGES)
-	fpm -s empty -t deb -n linux-rock64 -v $(RELEASE_NAME) \
-		-p $@ \
-		--deb-priority optional --category admin \
-		--depends "linux-rock64-package (= $(RELEASE_NAME))" \
-		--depends "linux-image-$(KERNEL_RELEASE) (= $(RELEASE_NAME))" \
-		--depends "linux-headers-$(KERNEL_RELEASE) (= $(RELEASE_NAME))" \
-		--force \
-		--url https://gitlab.com/ayufan-rock64/linux-build \
-		--description "Rock64 Linux virtual package: depends on kernel and compatibility package" \
-		-m "Kamil Trzciński <ayufan@ayufan.eu>" \
-		--license "MIT" \
-		--vendor "Kamil Trzciński" \
-		-a arm64
-
-linux-rock64-package-$(RELEASE_NAME)_all.deb: package
-	chmod -R go-w $<
-	fpm -s dir -t deb -n linux-rock64-package -v $(RELEASE_NAME) \
-		-p $@ \
-		--deb-priority optional --category admin \
-		--force \
-		--depends figlet \
-		--depends cron \
-		--depends gdisk \
-		--depends parted \
-		--deb-compression bzip2 \
-		--deb-field "Multi-Arch: foreign" \
-		--after-install package/scripts/postinst.deb \
-		--before-remove package/scripts/prerm.deb \
-		--url https://gitlab.com/ayufan-rock64/linux-build \
-		--description "Rock64 Linux support package" \
-		--config-files /boot/efi/extlinux/ \
-		-m "Kamil Trzciński <ayufan@ayufan.eu>" \
-		--license "MIT" \
-		--vendor "Kamil Trzciński" \
-		-a all \
-		package/root/=/
-
-linux-rock64-package-$(RELEASE_NAME)_all.rpm: package
-	chmod -R go-w $<
-	fpm -s dir -t rpm -n linux-rock64-package -v $(RELEASE_NAME) \
-		-p $@ \
-		--force \
-		--depends figlet \
-		--depends cron \
-		--depends gdisk \
-		--depends parted \
-		--after-install package/scripts/postinst.deb \
-		--before-remove package/scripts/prerm.deb \
-		--url https://gitlab.com/ayufan-rock64/linux-build \
-		--description "Rock64 Linux support package" \
-		--config-files /boot/efi/extlinux/ \
-		-m "Kamil Trzciński <ayufan@ayufan.eu>" \
-		--license "MIT" \
-		--vendor "Kamil Trzciński" \
-		-a all \
-		package/root/=/
-
-%.tar.xz: %.tar
-	pxz -f -3 $<
-
-%.img.xz: %.img
-	pxz -f -3 $<
-
-BUILD_SYSTEMS := artful zesty xenial jessie stretch
-BUILD_VARIANTS := minimal mate i3 openmediavault
-BUILD_ARCHS := armhf arm64
-BUILD_MODELS := rock64
-
-%-system.img: $(PACKAGES) linux-rock64-$(RELEASE_NAME)_arm64.deb
-	sudo bash rootfs/build-system-image.sh \
-		"$(shell readlink -f $@)" \
-		"$(shell readlink -f $(subst -system.img,-boot.img,$@))" \
-		"$(filter $(BUILD_SYSTEMS), $(subst -, ,$@))" \
-		"$(filter $(BUILD_VARIANTS), $(subst -, ,$@))" \
-		"$(filter $(BUILD_ARCHS), $(subst -, ,$@))" \
-		"$(filter $(BUILD_MODELS), $(subst -, ,$@))" \
-		$^
-
-out/u-boot/uboot.img: u-boot/configs/rock64-rk3328_defconfig
-	build/mk-uboot.sh rk3328-rock64
-
-%.img: %-system.img out/u-boot/uboot.img
-	build/mk-image.sh -c rk3328 -t system -r "$<" -b "$(subst -system.img,-boot.img,$<)" -o "$@.tmp"
-	mv "$@.tmp" "$@"
-
-$(KERNEL_PACKAGE): kernel/arch/arm64/configs/$(KERNEL_DEFCONFIG)
-	echo -n > kernel/.scmversion
-	$(KERNEL_MAKE) $(KERNEL_DEFCONFIG)
-	$(KERNEL_MAKE) bindeb-pkg -j$(shell nproc)
-
-$(KERNEL_HEADERS_PACKAGES): $(KERNEL_PACKAGE)
-
-.PHONY: kernelpkg
-kernelpkg: $(KERNEL_PACKAGE) $(KERNEL_HEADERS_PACKAGES)
-
-.PHONY: kernel
-kernel: kernelpkg
-
-.PHONY: u-boot
-u-boot: out/u-boot/uboot.img
-
-.PHONY: linux-package
-linux-package: linux-rock64-package-$(RELEASE_NAME)_all.deb linux-rock64-package-$(RELEASE_NAME)_all.rpm
-
-.PHONY: linux-virtual
-linux-virtual: linux-rock64-$(RELEASE_NAME)_arm64.deb
-
-.PHONY: xenial-minimal-rock64
-xenial-minimal-rock64: xenial-minimal-rock64-$(IMAGE_SUFFIX)-armhf.img.xz xenial-minimal-rock64-$(IMAGE_SUFFIX)-arm64.img.xz
-
-.PHONY: xenial-mate-rock64
-xenial-mate-rock64: xenial-mate-rock64-$(IMAGE_SUFFIX)-armhf.img.xz xenial-mate-rock64-$(IMAGE_SUFFIX)-arm64.img.xz
-
-.PHONY: xenial-i3-rock64
-xenial-i3-rock64: xenial-i3-rock64-$(IMAGE_SUFFIX)-armhf.img.xz xenial-i3-rock64-$(IMAGE_SUFFIX)-arm64.img.xz
-
-.PHONY: jessie-minimal-rock64
-jessie-minimal-rock64: jessie-minimal-rock64-$(IMAGE_SUFFIX)-arm64.img.xz
-
-.PHONY: jessie-openmediavault-rock64
-jessie-openmediavault-rock64: jessie-openmediavault-rock64-$(IMAGE_SUFFIX)-armhf.img.xz
-
-.PHONY: stretch-minimal-rock64
-stretch-minimal-rock64: stretch-minimal-rock64-$(IMAGE_SUFFIX)-arm64.img.xz
-
-.PHONY: xenial-rock64
-xenial-rock64: xenial-minimal-rock64 xenial-mate-rock64 xenial-i3-rock64
-
-.PHONY: stretch-rock64
-stretch-rock64: stretch-minimal-rock64
-
-.PHONY: jessie-rock64
-jessie-rock64: jessie-minimal-rock64 jessie-openmediavault-rock64
-
-.PHONY: linux-rock64
-linux-rock64: xenial-rock64 stretch-rock64 jessie-rock64 linux-virtual
-
-.PHONY: pull-trees
-pull-trees:
-	git subtree pull --prefix build https://github.com/rockchip-linux/build debian
-	git subtree pull --prefix build https://github.com/rock64-linux/build debian
-
-.PHONY: kernel-menuconfig
-kernel-menuconfig:
-	$(KERNEL_MAKE) $(KERNEL_DEFCONFIG)
-	$(KERNEL_MAKE) menuconfig
-	$(KERNEL_MAKE) savedefconfig
-	cp kernel/defconfig kernel/arch/arm64/configs/$(KERNEL_DEFCONFIG)
-
-REMOTE_HOST ?= rock64.home
-
-kernel-build:
-	$(KERNEL_MAKE) Image dtbs -j$(shell nproc)
-
-kernel-build-with-modules:
-	$(KERNEL_MAKE) Image modules dtbs -j$(shell nproc)
-	$(KERNEL_MAKE) modules_install INSTALL_MOD_PATH=$(shell pwd)/tmp/linux_modules
-
-kernel-update:
-	rsync --partial --checksum -rv kernel/arch/arm64/boot/Image root@$(REMOTE_HOST):$(REMOTE_DIR)/boot/efi/Image
-	rsync --partial --checksum -rv kernel/arch/arm64/boot/dts/rockchip/rk3328-rock64.dtb root@$(REMOTE_HOST):$(REMOTE_DIR)/boot/efi/dtb
-	rsync --partial --checksum -av tmp/linux_modules/lib/ root@$(REMOTE_HOST):$(REMOTE_DIR)/lib

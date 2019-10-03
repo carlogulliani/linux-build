@@ -27,18 +27,26 @@ BOOT_SIZE=100
 
 case "$VARIANT" in
     minimal)
-        SIZE=1024
+        SIZE=2048
         ;;
 
     i3)
-        SIZE=2048
+        SIZE=2560
         ;;
 
     mate)
         SIZE=5120
         ;;
 
+    lxde)
+        SIZE=3072
+        ;;
+
     openmediavault)
+        SIZE=2048
+        ;;
+
+    containers)
         SIZE=2048
         ;;
 
